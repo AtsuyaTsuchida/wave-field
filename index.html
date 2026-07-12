@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAVE FIELD — Quantum / Classical wave simulator</title>
+<style>
+  :root{ --accent:#7fd0ff; --accent2:#ff7fae; --panel:rgba(16,18,26,.78); }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:#05060a; overflow:hidden;
+    font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; color:#cdd6f4; }
+  #stage{ position:fixed; inset:0; }
+  canvas{ width:100%; height:100%; display:block; cursor:crosshair; }
+  #title{ position:fixed; top:14px; left:18px; z-index:5; pointer-events:none;
+    font-weight:700; letter-spacing:.32em; font-size:13px; color:#e6eaf6;
+    text-shadow:0 0 18px rgba(127,208,255,.5); }
+  #title small{ display:block; letter-spacing:.18em; font-weight:400; opacity:.55; font-size:10px; margin-top:3px; }
+  #panel{ position:fixed; top:14px; right:14px; z-index:5; width:248px;
+    background:var(--panel); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(127,208,255,.14); border-radius:14px; padding:14px 14px 12px;
+    box-shadow:0 18px 50px rgba(0,0,0,.55); font-size:11px; }
+  .seg{ display:flex; gap:6px; margin-bottom:11px; }
+  .seg button{ flex:1; }
+  button{ background:rgba(255,255,255,.05); color:#cdd6f4; border:1px solid rgba(255,255,255,.1);
+    border-radius:8px; padding:7px 6px; font:inherit; font-size:10.5px; cursor:pointer; transition:.15s; }
+  button:hover{ background:rgba(127,208,255,.14); border-color:rgba(127,208,255,.4); }
+  button.on{ background:linear-gradient(180deg,rgba(127,208,255,.34),rgba(127,208,255,.16));
+    border-color:var(--accent); color:#fff; box-shadow:0 0 16px rgba(127,208,255,.35); }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:11px; }
+  .lbl{ opacity:.62; margin:9px 0 4px; letter-spacing:.06em; text-transform:uppercase; font-size:9.5px; }
+  .row{ display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .row span{ width:40px; opacity:.6; font-size:10px; text-align:right; }
+  input[type=range]{ flex:1; height:3px; -webkit-appearance:none; background:rgba(255,255,255,.14);
+    border-radius:3px; outline:none; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--accent); cursor:pointer; box-shadow:0 0 10px rgba(127,208,255,.6); }
+  .qonly,.conly{ display:none; }
+  body.q .qonly{ display:block; } body.c .conly{ display:block; }
+  body.q .qrow{ display:flex; } body.c .crow{ display:flex; }
+  .qrow,.crow{ display:none; }
+  #help{ position:fixed; left:18px; bottom:14px; z-index:5; font-size:10.5px; line-height:1.6;
+    color:#9aa6c4; pointer-events:none; text-shadow:0 1px 6px #000; max-width:46ch; }
+  #help b{ color:var(--accent); font-weight:600; }
+  kbd{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); border-radius:4px;
+    padding:0 5px; font-size:9.5px; }
+  .foot{ margin-top:10px; display:flex; gap:6px; }
+  .foot button{ flex:1; }
+  #audioBtn.on{ background:linear-gradient(180deg,rgba(255,127,174,.32),rgba(255,127,174,.14));
+    border-color:var(--accent2); box-shadow:0 0 16px rgba(255,127,174,.3); }
+</style>
+</head>
+<body class="q">
+<div id="stage"><canvas id="cv"></canvas></div>
+<div id="title">WAVE&nbsp;FIELD<small>schrödinger · wave equation</small></div>
+
+<div id="panel">
+  <div class="seg">
+    <button id="mQ" class="on">量子 ψ</button>
+    <button id="mC">古典 wave</button>
+  </div>
+
+  <div class="lbl">presets</div>
+  <div class="grid2" id="presets">
+    <button data-p="0">空 empty</button>
+    <button data-p="1">二重スリット</button>
+    <button data-p="2">障壁 tunnel</button>
+    <button data-p="3" class="qonly">調和井戸</button>
+    <button data-p="4" class="conly">レンズ</button>
+    <button data-p="5" class="conly">導波路</button>
+  </div>
+
+  <div class="lbl">simulation</div>
+  <div class="row"><span>速度</span><input id="sSpeed" type="range" min="1" max="6" step="1" value="3"></div>
+  <div class="row"><span>明るさ</span><input id="sGain" type="range" min="0.2" max="3" step="0.05" value="1"></div>
+  <div class="row"><span>bloom</span><input id="sBloom" type="range" min="0" max="2" step="0.05" value="1"></div>
+  <div class="row"><span>brush</span><input id="sBrush" type="range" min="4" max="60" step="1" value="22"></div>
+
+  <div class="qrow row"><span>運動量</span><input id="sMom" type="range" min="0" max="60" step="1" value="26"></div>
+  <div class="qrow row"><span>幅 σ</span><input id="sSig" type="range" min="6" max="40" step="1" value="16"></div>
+
+  <div class="crow row"><span>周波数</span><input id="sFreq" type="range" min="0.01" max="0.2" step="0.005" value="0.06"></div>
+  <div class="crow row"><span>振幅</span><input id="sAmp" type="range" min="0.05" max="1.5" step="0.05" value="0.7"></div>
+
+  <div class="foot">
+    <button id="playBtn" class="on">⏸ pause</button>
+    <button id="clearBtn">clear 場</button>
+    <button id="wipeBtn">erase 媒質</button>
+  </div>
+  <div class="foot">
+    <button id="audioBtn" class="conly">🎙 mic source</button>
+  </div>
+</div>
+
+<div id="help"></div>
+
+<script type="text/javascript">
+const cv = document.getElementById('cv');
+const gl = cv.getContext('webgl2', {antialias:false, preserveDrawingBuffer:false});
+if(!gl){ document.body.innerHTML='<p style="color:#fff;padding:40px">WebGL2 not available</p>'; }
+const extF = gl.getExtension('EXT_color_buffer_float');
+gl.getExtension('OES_texture_float_linear');
+
+// ---- simulation grid (16:9) ----
+const SW = 768, SH = 432;
+const PX = [1/SW, 1/SH];
+
+// ===================== shaders =====================
+const VS = `#version 300 es
+precision highp float;
+const vec2 P[3]=vec2[3](vec2(-1.,-1.),vec2(3.,-1.),vec2(-1.,3.));
+out vec2 uv;
+void main(){ vec2 p=P[gl_VertexID]; uv=p*.5+.5; gl_Position=vec4(p,0.,1.); }`;
+
+// --- material init (presets) ---
+const FS_MAT = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform int uPreset;
+void main(){
+  float V=0.0;   // potential / wall  (R)
+  float S=0.0;   // classical slowness (G)
+  vec2 c=uv-0.5;
+  if(uPreset==1){ // double slit : vertical barrier x~0.5 with two gaps
+    float bar = (abs(uv.x-0.5)<0.012)?1.0:0.0;
+    float slit = (abs(uv.y-0.40)<0.035 || abs(uv.y-0.60)<0.035)?0.0:1.0;
+    V = bar*slit*4.0;
+  } else if(uPreset==2){ // thin barrier (tunneling / reflect)
+    V = (abs(uv.x-0.5)<0.010)?2.2:0.0;
+  } else if(uPreset==3){ // harmonic well (quantum)
+    V = 28.0*dot(c,c);
+  } else if(uPreset==4){ // converging lens (classical slowness blob)
+    float r=length(c*vec2(1.0,1.0));
+    S = smoothstep(0.26,0.0,r)*0.85;
+  } else if(uPreset==5){ // waveguide : two horizontal walls -> channel
+    V = (abs(uv.y-0.5)>0.16 && abs(uv.y-0.5)<0.21)?4.0:0.0;
+  }
+  o=vec4(V,S,0.,1.);
+}`;
+
+// --- paint brush onto material ---
+const FS_PAINT = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D uMat;
+uniform vec2 uPos; uniform float uR; uniform float uAmt; // uAmt + add, - erase
+void main(){
+  vec4 m=texture(uMat,uv);
+  vec2 d=(uv-uPos)*vec2(${SW}.,${SH}.);
+  float g=exp(-dot(d,d)/(uR*uR));
+  m.r=clamp(m.r+uAmt*4.0*g,0.0,8.0);
+  o=m;
+}`;
+
+// --- simulation step ---
+const FS_SIM = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D uState;
+uniform sampler2D uMat;
+uniform vec2 uPx;
+uniform int uMode;    // 0 quantum, 1 classical
+uniform int uPhase;   // quantum: 0=update Re, 1=update Im
+uniform float uDt;
+uniform float uC2;
+uniform float uVscale;
+// injection (quantum packet)
+uniform int uInject; uniform vec2 uIpos; uniform vec2 uIk; uniform float uIsig; uniform float uIamp;
+// classical continuous source
+uniform int uSrcOn; uniform vec2 uSrc; uniform float uSrcVal;
+
+vec4 S(vec2 c){ return texture(uState,c); }
+
+void main(){
+  vec2 e=vec2(uPx.x,0.), n=vec2(0.,uPx.y);
+  vec4 c  = S(uv);
+  vec4 sN = S(uv+n), sS=S(uv-n), sE=S(uv+e), sW=S(uv-e);
+  vec4 sNE=S(uv+n+e), sNW=S(uv-e+n), sSE=S(uv+e-n), sSW=S(uv-e-n);
+  // isotropic 9-point laplacian per channel
+  vec4 orth=sN+sS+sE+sW, diag=sNE+sNW+sSE+sSW;
+  vec4 lap = 0.5*orth + 0.25*diag - 3.0*c;
+
+  vec4 mat = texture(uMat,uv);
+  float V = mat.r;
+
+  // sponge absorbing border
+  float m = min(min(uv.x,1.-uv.x),min(uv.y,1.-uv.y));
+  float absorb = mix(0.93,1.0, smoothstep(0.0,0.07,m));
+
+  vec4 outc = c;
+
+  if(uMode==0){
+    // ---- Schrödinger (Visscher staggered leapfrog), Re=r, Im=g ----
+    float Vp = V*uVscale;
+    if(uPhase==0){
+      float Re = c.r - uDt*(0.5*lap.g - Vp*c.g);
+      outc = vec4(Re, c.g, 0., 1.);
+    } else {
+      float Im = c.g + uDt*(0.5*lap.r - Vp*c.r);
+      outc = vec4(c.r, Im, 0., 1.);
+      // inject packet on Im phase (adds to both)
+      if(uInject==1){
+        vec2 d=(uv-uIpos)*vec2(${SW}.,${SH}.);
+        float g=exp(-dot(d,d)/(2.0*uIsig*uIsig))*uIamp;
+        float ph=dot(uIk,uv);
+        outc.r += g*cos(ph);
+        outc.g += g*sin(ph);
+      }
+    }
+    outc.rg *= absorb;
+  } else {
+    // ---- classical wave eq : r=current u, g=previous u ----
+    float wall = (V>0.5)?0.0:1.0;
+    float speed = 1.0 - 0.6*mat.g;           // refraction from slowness
+    float c2 = uC2*wall*speed*speed;
+    float uNext = 2.0*c.r - c.g + c2*lap.r;
+    uNext *= 0.9997;                          // gentle global damping
+    if(uSrcOn==1){
+      vec2 d=(uv-uSrc)*vec2(${SW}.,${SH}.);
+      uNext += uSrcVal*exp(-dot(d,d)/9.0);
+    }
+    outc = vec4(uNext*absorb, c.r*absorb, 0., 1.);
+  }
+  o=outc;
+}`;
+
+// --- render field -> HDR scene ---
+const FS_RENDER = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D uState; uniform sampler2D uMat;
+uniform int uMode; uniform float uGain;
+vec3 hsv(float h,float s,float v){
+  vec3 p=abs(fract(h+vec3(0.,2./3.,1./3.))*6.-3.);
+  return v*mix(vec3(1.),clamp(p-1.,0.,1.),s);
+}
+void main(){
+  vec4 c=texture(uState,uv);
+  vec4 mat=texture(uMat,uv);
+  vec3 col;
+  if(uMode==0){
+    float amp2=c.r*c.r+c.g*c.g;
+    float ph=atan(c.g,c.r)/6.28318+0.5;
+    float b=1.0-exp(-amp2*uGain*9.0);
+    col=hsv(ph,0.82,1.0)*b;
+  } else {
+    float v=c.r*uGain;
+    float t=clamp(v,-1.,1.);
+    float b=pow(abs(t),0.72);
+    vec3 warm=vec3(1.0,0.52,0.22), cool=vec3(0.26,0.62,1.0);
+    col=mix(cool,warm,step(0.,t))*b;
+  }
+  // structure overlay (walls / lens) so geometry is visible
+  col += vec3(0.05,0.07,0.10)*clamp(mat.r,0.,1.)*0.7;
+  col += vec3(0.05,0.10,0.08)*mat.g*0.6;
+  o=vec4(col,1.);
+}`;
+
+// --- bright pass + blur (separable) ---
+const FS_BLUR = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D uTex; uniform vec2 uDir; uniform int uBright;
+void main(){
+  vec3 s=vec3(0.); float w[5]; w[0]=0.227; w[1]=0.194; w[2]=0.121; w[3]=0.054; w[4]=0.016;
+  vec3 c=texture(uTex,uv).rgb;
+  if(uBright==1){ float l=max(max(c.r,c.g),c.b); c*= smoothstep(0.45,0.9,l); }
+  s+=c*w[0];
+  for(int i=1;i<5;i++){
+    vec2 off=uDir*float(i);
+    vec3 a=texture(uTex,uv+off).rgb, b=texture(uTex,uv-off).rgb;
+    if(uBright==1){
+      float la=max(max(a.r,a.g),a.b), lb=max(max(b.r,b.g),b.b);
+      a*=smoothstep(0.45,0.9,la); b*=smoothstep(0.45,0.9,lb);
+    }
+    s+=(a+b)*w[i];
+  }
+  o=vec4(s,1.);
+}`;
+
+// --- composite ---
+const FS_COMP = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D uScene; uniform sampler2D uBloom; uniform float uBloomAmt;
+void main(){
+  vec3 c=texture(uScene,uv).rgb + texture(uBloom,uv).rgb*uBloomAmt;
+  c=(c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14);   // ACES tonemap
+  float r=length(uv-0.5); c*=1.0-0.55*r*r;       // vignette
+  c=pow(clamp(c,0.,1.),vec3(1.0/2.2));
+  o=vec4(c,1.);
+}`;
+
+// ===================== GL helpers =====================
+function sh(t,src){ const s=gl.createShader(t); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s),src); return s; }
+function prog(fs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,VS));
+  gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p)); return p; }
+const pMat=prog(FS_MAT), pPaint=prog(FS_PAINT), pSim=prog(FS_SIM),
+      pRender=prog(FS_RENDER), pBlur=prog(FS_BLUR), pComp=prog(FS_COMP);
+const vao=gl.createVertexArray();
+
+function tex(w,h,filter){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.HALF_FLOAT,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return t; }
+function texF(w,h){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,w,h,0,gl.RGBA,gl.FLOAT,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return t; }
+function fbo(t){ const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0); return f; }
+
+// state + material ping-pong (full float for accuracy)
+let stA=texF(SW,SH), stB=texF(SW,SH), stFa=fbo(stA), stFb=fbo(stB);
+let mtA=texF(SW,SH), mtB=texF(SW,SH), mtFa=fbo(mtA), mtFb=fbo(mtB);
+// scene + bloom (half float, canvas-sized, set on resize)
+let scTex,scF, b1Tex,b1F, b2Tex,b2F, RW=1,RH=1;
+
+function draw(){ gl.bindVertexArray(vao); gl.drawArrays(gl.TRIANGLES,0,3); }
+function U(p,n){ return gl.getUniformLocation(p,n); }
+function bindTex(p,name,unit,t){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.uniform1i(U(p,name),unit); }
+
+// ===================== state =====================
+const st = { mode:0, playing:true, t:0, preset:0,
+  speed:3, gain:1, bloom:1, brush:22, mom:26, sig:16, freq:0.06, amp:0.7,
+  audio:false };
+
+function setMaterial(preset){
+  gl.viewport(0,0,SW,SH); gl.useProgram(pMat);
+  gl.uniform1i(U(pMat,'uPreset'),preset);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,mtFa); draw();          // write into mtA
+  // copy mtA->mtB so both consistent (paint reads/writes ping-pong)
+  blit(mtA,mtFb);
+}
+function clearField(){
+  for(const f of [stFa,stFb]){ gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+    gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT); }
+}
+// simple copy program reuse: use blur prog with bright=0 dir=0 as passthrough? make a tiny copy via render of texture
+const pCopy=prog(`#version 300 es
+precision highp float; in vec2 uv; out vec4 o; uniform sampler2D t;
+void main(){ o=texture(t,uv); }`);
+function blit(srcTex,dstF){ gl.viewport(0,0,SW,SH); gl.useProgram(pCopy);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,dstF); bindTex(pCopy,'t',0,srcTex); draw(); }
+
+// ===================== sim step =====================
+let inject=null;   // {pos:[u,v], k:[kx,ky]} pending quantum packet
+let srcOn=false, srcPos=[0.5,0.5];
+
+function simPass(phase){
+  gl.viewport(0,0,SW,SH); gl.useProgram(pSim);
+  bindTex(pSim,'uState',0,stA); bindTex(pSim,'uMat',1,mtA);
+  gl.uniform2f(U(pSim,'uPx'),PX[0],PX[1]);
+  gl.uniform1i(U(pSim,'uMode'),st.mode);
+  gl.uniform1i(U(pSim,'uPhase'),phase);
+  gl.uniform1f(U(pSim,'uDt'), st.mode===0?0.10:1.0);
+  gl.uniform1f(U(pSim,'uC2'),0.25);
+  gl.uniform1f(U(pSim,'uVscale'),1.0);
+  // injection
+  if(inject && st.mode===0){ gl.uniform1i(U(pSim,'uInject'),1);
+    gl.uniform2f(U(pSim,'uIpos'),inject.pos[0],inject.pos[1]);
+    gl.uniform2f(U(pSim,'uIk'),inject.k[0],inject.k[1]);
+    gl.uniform1f(U(pSim,'uIsig'),st.sig);
+    gl.uniform1f(U(pSim,'uIamp'),1.4);
+  } else gl.uniform1i(U(pSim,'uInject'),0);
+  // classical source
+  let sv=0;
+  if(srcOn && st.mode===1){ sv = st.amp*Math.sin(2*Math.PI*st.freq*st.t)*st.audioGain; }
+  gl.uniform1i(U(pSim,'uSrcOn'), (srcOn&&st.mode===1)?1:0);
+  gl.uniform2f(U(pSim,'uSrc'),srcPos[0],srcPos[1]);
+  gl.uniform1f(U(pSim,'uSrcVal'),sv);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER,stFb); draw();
+  [stA,stB]=[stB,stA]; [stFa,stFb]=[stFb,stFa];
+}
+st.audioGain=1;
+
+function step(){
+  const sub=st.speed;
+  for(let i=0;i<sub;i++){
+    st.t += (st.mode===0?0.10:1.0);
+    if(st.mode===0){ simPass(0); simPass(1); }
+    else simPass(0);
+    if(inject){ inject=null; }   // inject once
+  }
+}
+
+// ===================== render =====================
+function render(){
+  // field -> scene
+  gl.viewport(0,0,RW,RH); gl.useProgram(pRender);
+  bindTex(pRender,'uState',0,stA); bindTex(pRender,'uMat',1,mtA);
+  gl.uniform1i(U(pRender,'uMode'),st.mode); gl.uniform1f(U(pRender,'uGain'),st.gain);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,scF); draw();
+  // bloom: bright+H -> b1, V -> b2
+  gl.useProgram(pBlur);
+  bindTex(pBlur,'uTex',0,scTex); gl.uniform1i(U(pBlur,'uBright'),1);
+  gl.uniform2f(U(pBlur,'uDir'),1.6/RW,0); gl.bindFramebuffer(gl.FRAMEBUFFER,b1F); draw();
+  bindTex(pBlur,'uTex',0,b1Tex); gl.uniform1i(U(pBlur,'uBright'),0);
+  gl.uniform2f(U(pBlur,'uDir'),0,1.6/RH); gl.bindFramebuffer(gl.FRAMEBUFFER,b2F); draw();
+  // composite -> screen
+  gl.useProgram(pComp); gl.viewport(0,0,cv.width,cv.height);
+  bindTex(pComp,'uScene',0,scTex); bindTex(pComp,'uBloom',1,b2Tex);
+  gl.uniform1f(U(pComp,'uBloomAmt'),st.bloom);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); draw();
+}
+
+function loop(){
+  if(st.playing) step();
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ===================== resize =====================
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  RW=Math.round(window.innerWidth*dpr); RH=Math.round(window.innerHeight*dpr);
+  cv.width=RW; cv.height=RH;
+  scTex=tex(RW,RH,gl.LINEAR); scF=fbo(scTex);
+  b1Tex=tex(RW>>1,RH>>1,gl.LINEAR); b1F=fbo(b1Tex);
+  b2Tex=tex(RW>>1,RH>>1,gl.LINEAR); b2F=fbo(b2Tex);
+}
+window.addEventListener('resize',resize);
+
+// ===================== pointer =====================
+function toUV(ev){ const r=cv.getBoundingClientRect();
+  return [ (ev.clientX-r.left)/r.width, 1.0-(ev.clientY-r.top)/r.height ]; }
+let down=false, painting=false, erasing=false, startUV=null, lastT=0;
+
+function paintAt(uv,amt){ gl.useProgram(pPaint); gl.viewport(0,0,SW,SH);
+  bindTex(pPaint,'uMat',0,mtA); gl.uniform2f(U(pPaint,'uPos'),uv[0],uv[1]);
+  gl.uniform1f(U(pPaint,'uR'),st.brush); gl.uniform1f(U(pPaint,'uAmt'),amt);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,mtFb); draw();
+  [mtA,mtB]=[mtB,mtA]; [mtFa,mtFb]=[mtFb,mtFa]; }
+
+cv.addEventListener('pointerdown',ev=>{ cv.setPointerCapture(ev.pointerId); down=true;
+  const uv=toUV(ev); startUV=uv; lastT=performance.now();
+  if(ev.shiftKey || ev.button===2){ painting=true; erasing=(ev.button===2||ev.altKey);
+    paintAt(uv, erasing?-1:1); }
+  else if(st.mode===1){ srcOn=true; srcPos=uv; }   // classical continuous source
+});
+cv.addEventListener('pointermove',ev=>{ if(!down) return; const uv=toUV(ev);
+  if(painting){ paintAt(uv, erasing?-1:1); }
+  else if(st.mode===1){ srcPos=uv; }
+});
+cv.addEventListener('pointerup',ev=>{ down=false; const uv=toUV(ev);
+  if(painting){ painting=false; }
+  else if(st.mode===0){ // quantum: inject packet with momentum from drag
+    const k=[(uv[0]-startUV[0])*st.mom, (uv[1]-startUV[1])*st.mom];
+    inject={pos:startUV, k:k};
+  } else { srcOn=false; }
+});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ===================== UI =====================
+const $=id=>document.getElementById(id);
+function setMode(m){ st.mode=m; document.body.className=(m===0?'q':'c');
+  $('mQ').classList.toggle('on',m===0); $('mC').classList.toggle('on',m===1);
+  clearField(); st.t=0; srcOn=false; }
+$('mQ').onclick=()=>setMode(0); $('mC').onclick=()=>setMode(1);
+document.querySelectorAll('#presets button').forEach(b=>b.onclick=()=>{
+  const p=+b.dataset.p; st.preset=p; setMaterial(p); clearField();
+  if(p===3) setMode(0); if(p===4||p===5) setMode(1);
+});
+$('sSpeed').oninput=e=>st.speed=+e.target.value;
+$('sGain').oninput=e=>st.gain=+e.target.value;
+$('sBloom').oninput=e=>st.bloom=+e.target.value;
+$('sBrush').oninput=e=>st.brush=+e.target.value;
+$('sMom').oninput=e=>st.mom=+e.target.value;
+$('sSig').oninput=e=>st.sig=+e.target.value;
+$('sFreq').oninput=e=>st.freq=+e.target.value;
+$('sAmp').oninput=e=>st.amp=+e.target.value;
+$('playBtn').onclick=()=>{ st.playing=!st.playing;
+  $('playBtn').textContent=st.playing?'⏸ pause':'▶ play';
+  $('playBtn').classList.toggle('on',st.playing); };
+$('clearBtn').onclick=()=>{ clearField(); st.t=0; };
+$('wipeBtn').onclick=()=>setMaterial(0);
+
+// mic source (classical)
+let actx,analyser,adata;
+$('audioBtn').onclick=async()=>{
+  if(st.audio){ st.audio=false; st.audioGain=1; $('audioBtn').classList.remove('on'); return; }
+  try{ const s=await navigator.mediaDevices.getUserMedia({audio:true});
+    actx=new (window.AudioContext||window.webkitAudioContext)();
+    const src=actx.createMediaStreamSource(s); analyser=actx.createAnalyser();
+    analyser.fftSize=512; adata=new Uint8Array(analyser.frequencyBinCount); src.connect(analyser);
+    st.audio=true; $('audioBtn').classList.add('on'); pollAudio();
+  }catch(e){ alert('マイク取得に失敗: '+e.message); }
+};
+function pollAudio(){ if(!st.audio) return;
+  analyser.getByteTimeDomainData(adata); let s=0;
+  for(let i=0;i<adata.length;i++){ const v=(adata[i]-128)/128; s+=v*v; }
+  const rms=Math.sqrt(s/adata.length);
+  st.audioGain=1+rms*6;
+  requestAnimationFrame(pollAudio);
+}
+
+$('help').innerHTML =
+ '<b>量子 ψ</b>: ドラッグで波束を発射（方向=運動量）・クリックで静止波束　'+
+ '<b>古典</b>: ドラッグ＝連続波源<br>'+
+ '<kbd>Shift</kbd>+ドラッグ=壁/障壁を描く　<kbd>右ドラッグ</kbd>=消す　presetで二重スリット等';
+
+// ===================== boot =====================
+resize(); clearField(); setMaterial(0);
+// seed a starter quantum packet
+inject={pos:[0.30,0.5], k:[26,0]};
+loop();
+</script>
+</body>
+</html>
